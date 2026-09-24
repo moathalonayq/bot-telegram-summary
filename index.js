@@ -158,28 +158,30 @@ bot.on("message", async (ctx) => {
     );
     const stopTyping = startTyping(ctx);
 
+    // 1. مرحلة جلب منشورات القناة
     let channelData;
     try {
       channelData = await fetchChannelPosts(cleanUsername, 48);
     } catch (err) {
       console.error("خطأ في جلب القناة:", err);
-      await ctx.deleteMessage(statusMsg.message_id).catch(() => {});
-      const errorMessage = `⚠️ *تعذر جلب منشورات القناة:*\n${err.message || "تأكد من صحة الرابط وأن القناة عامة."}\n\n🔒 *للقنوات الخاصة:* يمكنك ببساطة إعادة توجيه (Forward) المنشورات منها وسألخصها فوراً!`;
-      await ctx.reply(errorMessage, { parse_mode: "Markdown" });
       stopTyping();
-      return;
+      await ctx.deleteMessage(statusMsg.message_id).catch(() => {});
+      return await ctx.reply(
+        `⚠️ *تعذر جلب منشورات القناة من تليجرام:*\n${err.message || "تأكد من صحة الرابط"}\n\n💡 *للقنوات الخاصة:* يمكنك ببساطة إعادة توجيه (Forward) المنشورات منها وسألخصها لك فوراً!`,
+        { parse_mode: "Markdown" }
+      );
     }
 
     if (!channelData || channelData.messages.length === 0) {
+      stopTyping();
       await ctx.deleteMessage(statusMsg.message_id).catch(() => {});
-      await ctx.reply(
+      return await ctx.reply(
         `ℹ️ لم يتم نشر أي منشورات جديدة في قناة *${channelData?.title || cleanUsername}* خلال آخر 48 ساعة.`,
         { parse_mode: "Markdown" }
       );
-      stopTyping();
-      return;
     }
 
+    // 2. تحديث الحالة
     await ctx.telegram.editMessageText(
       ctx.chat.id,
       statusMsg.message_id,
@@ -188,22 +190,26 @@ bot.on("message", async (ctx) => {
       { parse_mode: "Markdown" }
     ).catch(() => {});
 
+    // 3. مرحلة التلخيص بالذكاء الاصطناعي
+    let summary;
     try {
-      const summary = await summarizeChannelPosts(
+      summary = await summarizeChannelPosts(
         channelData.title,
         channelData.username,
         channelData.messages
       );
-
-      await ctx.deleteMessage(statusMsg.message_id).catch(() => {});
-      await sendSafeReply(ctx, summary);
     } catch (err) {
-      console.error("خطأ في تلخيص القناة بالذكاء الاصطناعي:", err);
-      await ctx.deleteMessage(statusMsg.message_id).catch(() => {});
-      await ctx.reply(`⚠️ تم جلب منشورات القناة بنجاح، لكن حدث خطأ أثناء التلخيص: ${err.message || "يرجى المحاولة بعد قليل."}`);
-    } finally {
+      console.error("خطأ في التلخيص:", err);
       stopTyping();
+      await ctx.deleteMessage(statusMsg.message_id).catch(() => {});
+      return await ctx.reply(
+        `⚠️ تم استخراج ${channelData.messages.length} منشوراً بنجاح، لكن حدث خطأ أثناء التلخيص:\n\`${err.message || "خطأ غير متوقع"}\`\n\nيرجى المحاولة بعد لحظات.`
+      );
     }
+
+    stopTyping();
+    await ctx.deleteMessage(statusMsg.message_id).catch(() => {});
+    await sendSafeReply(ctx, summary);
     return;
   }
 
