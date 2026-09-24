@@ -158,26 +158,37 @@ bot.on("message", async (ctx) => {
     );
     const stopTyping = startTyping(ctx);
 
+    let channelData;
     try {
-      const channelData = await fetchChannelPosts(cleanUsername, 48);
+      channelData = await fetchChannelPosts(cleanUsername, 48);
+    } catch (err) {
+      console.error("خطأ في جلب القناة:", err);
+      await ctx.deleteMessage(statusMsg.message_id).catch(() => {});
+      const errorMessage = `⚠️ *تعذر جلب منشورات القناة:*\n${err.message || "تأكد من صحة الرابط وأن القناة عامة."}\n\n🔒 *للقنوات الخاصة:* يمكنك ببساطة إعادة توجيه (Forward) المنشورات منها وسألخصها فوراً!`;
+      await ctx.reply(errorMessage, { parse_mode: "Markdown" });
+      stopTyping();
+      return;
+    }
 
-      if (channelData.messages.length === 0) {
-        await ctx.deleteMessage(statusMsg.message_id).catch(() => {});
-        await ctx.reply(
-          `ℹ️ لم يتم نشر أي منشورات جديدة في قناة *${channelData.title}* خلال آخر 48 ساعة.`,
-          { parse_mode: "Markdown" }
-        );
-        return;
-      }
-
-      await ctx.telegram.editMessageText(
-        ctx.chat.id,
-        statusMsg.message_id,
-        undefined,
-        `📊 تم استخراج *${channelData.messages.length}* منشوراً من *${channelData.title}*.\n🧠 جاري إنشاء الملخص الذكي بواسطة Gemini...`,
+    if (!channelData || channelData.messages.length === 0) {
+      await ctx.deleteMessage(statusMsg.message_id).catch(() => {});
+      await ctx.reply(
+        `ℹ️ لم يتم نشر أي منشورات جديدة في قناة *${channelData?.title || cleanUsername}* خلال آخر 48 ساعة.`,
         { parse_mode: "Markdown" }
-      ).catch(() => {});
+      );
+      stopTyping();
+      return;
+    }
 
+    await ctx.telegram.editMessageText(
+      ctx.chat.id,
+      statusMsg.message_id,
+      undefined,
+      `📊 تم استخراج *${channelData.messages.length}* منشوراً من *${channelData.title}*.\n🧠 جاري إنشاء الملخص الذكي بواسطة Gemini...`,
+      { parse_mode: "Markdown" }
+    ).catch(() => {});
+
+    try {
       const summary = await summarizeChannelPosts(
         channelData.title,
         channelData.username,
@@ -186,13 +197,10 @@ bot.on("message", async (ctx) => {
 
       await ctx.deleteMessage(statusMsg.message_id).catch(() => {});
       await sendSafeReply(ctx, summary);
-
     } catch (err) {
-      console.error("خطأ في معالجة القناة:", err);
+      console.error("خطأ في تلخيص القناة بالذكاء الاصطناعي:", err);
       await ctx.deleteMessage(statusMsg.message_id).catch(() => {});
-
-      const errorMessage = `⚠️ *تعذر جلب منشورات القناة:*\n\n💡 *تأكد من الآتي:*\n1. أن المعرف أو الرابط صحيح.\n2. أن القناة *عامة* ومفتوحة وليست خاصة.\n\n🔒 *للقنوات الخاصة:* يمكنك ببساطة إعادة توجيه (Forward) المنشورات منها إلى هنا وسألخصها لك فوراً!`;
-      await ctx.reply(errorMessage, { parse_mode: "Markdown" });
+      await ctx.reply(`⚠️ تم جلب منشورات القناة بنجاح، لكن حدث خطأ أثناء التلخيص: ${err.message || "يرجى المحاولة بعد قليل."}`);
     } finally {
       stopTyping();
     }
