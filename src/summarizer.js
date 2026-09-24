@@ -4,7 +4,7 @@ const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
 
-const MODEL_NAME = "gemini-3.6-flash";
+const MODEL_NAME = "gemini-3-flash-preview";
 
 /**
  * تنفيذ استدعاء الذكاء الاصطناعي مع إعادة المحاولة تلقائياً عند الضغط أو أخطاء 503/429
