@@ -4,50 +4,38 @@ const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
 
-// قائمة النماذج المعتمدة بالترتيب، نبدأ بالأكثر استقراراً وسرعة
-const CANDIDATE_MODELS = [
-  "gemini-3-flash-preview",
-  "gemini-3.6-flash",
-  "gemini-3.5-flash",
-];
+const MODEL_NAME = "gemini-3.6-flash";
 
 /**
- * تنفيذ استدعاء الذكاء الاصطناعي مع التبديل التلقائي الفوري بين النماذج عند الضغط
+ * تنفيذ استدعاء الذكاء الاصطناعي مع إعادة المحاولة تلقائياً عند الضغط أو أخطاء 503/429
  * @param {string} prompt 
+ * @param {number} retries 
+ * @param {number} delayMs 
  * @returns {Promise<string>}
  */
-async function generateWithFallback(prompt) {
-  let lastError = null;
-
-  for (const model of CANDIDATE_MODELS) {
+async function generateWithRetry(prompt, retries = 3, delayMs = 2000) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const response = await ai.models.generateContent({
-        model: model,
+        model: MODEL_NAME,
         contents: prompt,
       });
       return response.text;
     } catch (err) {
-      lastError = err;
-      const isOverloaded =
+      const isRetryable =
         err.status === 503 ||
         err.status === 429 ||
-        (err.message && (
-          err.message.includes("503") ||
-          err.message.includes("high demand") ||
-          err.message.includes("quota") ||
-          err.message.includes("RESOURCE_EXHAUSTED") ||
-          err.message.includes("UNAVAILABLE")
-        ));
+        (err.message && (err.message.includes("503") || err.message.includes("high demand") || err.message.includes("quota")));
 
-      if (isOverloaded) {
-        console.warn(`⚠️ ضغط على النموذج ${model}، جاري التبديل الفوري للنموذج البديل...`);
+      if (isRetryable && attempt < retries) {
+        console.warn(`⚠️ ضغط مؤقت على النموذج، جاري إعادة المحاولة (${attempt}/${retries}) بعد ${delayMs}ms...`);
+        await new Promise((res) => setTimeout(res, delayMs));
+        delayMs *= 1.5;
         continue;
       }
       throw err;
     }
   }
-
-  throw lastError || new Error("تعذر الحصول على استجابة من نماذج الذكاء الاصطناعي.");
 }
 
 /**
@@ -62,22 +50,21 @@ async function summarizeChannelPosts(channelTitle, channelUsername, messages) {
     return "لم يتم العثور على أي منشورات جديدة في هذه القناة خلال آخر 48 ساعة.";
   }
 
-  // تجميع المنشورات مع التواريخ (بحد أقصى 50 منشوراً)
-  const selectedMessages = messages.slice(0, 50);
-  const formattedPosts = selectedMessages
+  // تجميع المنشورات مع التواريخ
+  const formattedPosts = messages
     .map((m, idx) => `[منشور ${idx + 1}] (${m.timeStr || "بدون تاريخ"}):\n${m.text}`)
     .join("\n\n---\n\n");
 
   const prompt = `أنت محلل محتوى ومحرر إخباري محترف. لديك قائمة بالمنشورات التي نُشرت خلال آخر يومين (48 ساعة) في قناة تليجرام بعنوان "${channelTitle}" (@${channelUsername}).
-إجمالي عدد المنشورات المستخرجة: ${selectedMessages.length}.
+إجمالي عدد المنشورات المستخرجة: ${messages.length}.
 
 المطلوب منك:
 1. صياغة ملخص احترافي وشامل باللغة العربية الفصحى.
 2. تقسيم الملخص بشكل منظم وفق الأقسام التالية:
    - 📌 **ملخص قناة ${channelTitle} (@${channelUsername})**
-   - ⏱️ **الفترة المشمولة**: آخر 48 ساعة (تم تحليل ${selectedMessages.length} منشوراً)
-   - ⚡ **أبرز العناوين والأحداث العاجلة**: (نقاط لأهم 3 إلى 5 أحداث أو عروض رئيسية)
-   - 📂 **التفاصيل مقسمة حسب المواضيع**: (اجمع الأخبار/المعلومات/العروض المترابطة معاً في عناوين فرعية مع نقاط واضحة)
+   - ⏱️ **الفترة المشمولة**: آخر 48 ساعة (تم تحليل ${messages.length} منشوراً)
+   - ⚡ **أبرز العناوين والأحداث العاجلة**: (نقاط لأهم 3 إلى 5 أحداث رئيسية)
+   - 📂 **التفاصيل مقسمة حسب المواضيع**: (اجمع الأخبار/المعلومات المترابطة معاً في عناوين فرعية مع نقاط واضحة)
    - 💡 **الخلاصة وأهم النتائج**: سطرين إلى ثلاثة تلخص اتجاه المحتوى في القناة.
 3. التزم بالدقة والموضوعية المستندة حصراً على المنشورات الواردة أدناه.
 4. استخدم تنسيق Markdown المتوافق مع تليجرام (استخدم **bold** و *italic* والقوائم النقطية).
@@ -86,7 +73,7 @@ async function summarizeChannelPosts(channelTitle, channelUsername, messages) {
 ${formattedPosts}
 `;
 
-  return await generateWithFallback(prompt);
+  return await generateWithRetry(prompt);
 }
 
 /**
@@ -116,7 +103,7 @@ ${sourceHint}
 ${content}
 `;
 
-  return await generateWithFallback(prompt);
+  return await generateWithRetry(prompt);
 }
 
 module.exports = {
