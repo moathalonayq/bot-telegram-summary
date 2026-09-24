@@ -196,25 +196,11 @@ bot.on("message", async (ctx) => {
   );
 });
 
-// خادم HTTP خفيف للتوافق التام مع استضافات السحابة مثل Render (Web Service)
-const http = require("http");
-const PORT = process.env.PORT || 3000;
-http.createServer((req, res) => {
-  res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
-  res.end("🤖 بوت تليجرام يعمل بنجاح على السحابة!");
-}).listen(PORT, () => {
-  console.log(`🌐 خادم الفحص (Health-check) يعمل على المنفذ: ${PORT}`);
-});
-
-// بدء التشغيل وإظهار معلومات البوت
-bot.telegram.getMe().then((botInfo) => {
-  console.log(`🤖 البوت @${botInfo.username} متصل ويعمل بنجاح!`);
+// بدء التشغيل
+bot.launch().then(() => {
+  console.log("🤖 البوت يعمل بنجاح ومستعد لاستقبال القنوات والنصوص!");
 }).catch((err) => {
-  console.error("❌ فشل الاتصال بتليجرام:", err.message);
-});
-
-bot.launch().catch((err) => {
-  console.error("❌ خطأ أثناء تشغيل البوت:", err);
+  console.error("❌ فشل تشغيل البوت:", err);
 });
 
 // إيقاف آمن عند إنهاء التطبيق
