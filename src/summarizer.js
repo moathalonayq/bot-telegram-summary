@@ -19,6 +19,11 @@ async function generateWithRetry(prompt, retries = 3, delayMs = 2000) {
       const response = await ai.models.generateContent({
         model: MODEL_NAME,
         contents: prompt,
+        config: {
+          thinkingConfig: {
+            thinkingBudget: 0, // تسريع التلخيص الفوري بدون انتظار تفكير داخلي
+          },
+        },
       });
       return response.text;
     } catch (err) {
